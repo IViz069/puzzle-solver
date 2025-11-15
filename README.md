@@ -1,14 +1,24 @@
 # 🧩 Puzzle Solver
 
-Programa en Python que usa OpenCV para ayudarte a resolver rompecabezas. Analiza piezas, las agrupa por color y sugiere qué piezas podrían encajar juntas.
+Programa en Python que usa OpenCV para ayudarte a resolver rompecabezas. **Compara tu rompecabezas parcialmente armado con piezas sueltas** y te dice exactamente cuáles encajan y dónde.
+
+## ✨ Novedad: Modo Comparación
+
+**¿Ya tienes el borde armado?** Este programa ahora puede:
+- 📸 Analizar una foto de tu rompecabezas actual
+- 🔍 Comparar con piezas sueltas que tengas en otra foto
+- 🎯 **Decirte qué piezas específicas encajan en los bordes** y con qué probabilidad
+- 📊 Mostrarte visualmente las mejores candidatas
 
 ## 🎯 Características
 
-- **Detección automática de piezas**: Identifica piezas individuales en una fotografía
+- **Modo avanzado**: Compara rompecabezas armado vs piezas sueltas (¡NUEVO!)
+- **Detección de bordes**: Analiza los bordes del rompecabezas armado
+- **Matching inteligente**: Compara colores de bordes para encontrar coincidencias
+- **Detección automática de piezas**: Identifica piezas individuales en fotografías
 - **Análisis de colores**: Extrae colores dominantes de cada pieza
 - **Agrupación por color**: Agrupa piezas similares para facilitar el armado
-- **Sugerencias de coincidencias**: Compara bordes y sugiere piezas que podrían encajar
-- **Visualizaciones**: Genera imágenes organizadas de las piezas detectadas
+- **Visualizaciones**: Genera imágenes organizadas de las piezas y sugerencias
 
 ## 📋 Requisitos
 
@@ -45,30 +55,60 @@ Para un rompecabezas de 1000 piezas:
 
 ## 💻 Uso
 
-### Uso básico
+El programa tiene **DOS MODOS** de operación:
+
+### 🎯 Modo 1: Comparar con rompecabezas armado (RECOMENDADO)
+
+**Este es el modo más útil** - Compara tu rompecabezas parcialmente armado con piezas sueltas para decirte exactamente cuáles encajan:
 
 ```bash
-python puzzle_solver.py imagen_piezas.jpg
+python puzzle_solver.py piezas_sueltas.jpg --puzzle-assembled mi_rompecabezas.jpg
 ```
 
-### Opciones avanzadas
+**Ejemplo real:**
+```bash
+# Tienes el borde armado y quieres saber qué piezas van en los bordes internos
+python puzzle_solver.py grupo_cielo.jpg --puzzle-assembled borde_completo.jpg
+```
+
+**Salida:** Te dirá qué piezas específicas encajan mejor en los bordes de tu rompecabezas actual.
+
+### 📊 Modo 2: Solo analizar piezas sueltas
+
+Útil cuando aún no tienes nada armado:
 
 ```bash
-python puzzle_solver.py imagen_piezas.jpg \
+python puzzle_solver.py piezas_sueltas.jpg
+```
+
+### Opciones adicionales
+
+```bash
+python puzzle_solver.py piezas.jpg \
+  --puzzle-assembled rompecabezas.jpg \
   --output-dir resultados \
   --min-area 500 \
-  --tolerance 30
+  --tolerance 30 \
+  --top-matches 20
 ```
 
 **Parámetros:**
-- `imagen_piezas.jpg`: Ruta a la imagen con las piezas (obligatorio)
+- `piezas_sueltas.jpg`: Imagen con las piezas sin armar (obligatorio)
+- `--puzzle-assembled`: Imagen del rompecabezas parcialmente armado (opcional)
 - `--output-dir`: Directorio donde guardar los resultados (default: `output`)
 - `--min-area`: Área mínima en píxeles para detectar una pieza (default: 1000)
 - `--tolerance`: Tolerancia para agrupar colores similares, 0-255 (default: 50)
+- `--top-matches`: Cuántas mejores coincidencias mostrar (default: 15)
 
 ## 📊 Resultados
 
-El programa genera los siguientes archivos:
+### Modo avanzado (con --puzzle-assembled):
+
+1. **`matches_puzzle_marked.jpg`**: Tu rompecabezas con los bordes marcados en colores
+2. **`matches_best_pieces.jpg`**: Las mejores piezas candidatas numeradas con sus scores
+3. **Salida en consola**: Lista detallada de qué pieza va dónde
+
+### Modo simple (sin --puzzle-assembled):
 
 1. **`pieces_overview.jpg`**: Vista general de todas las piezas detectadas con sus IDs
 2. **`color_groups_*.jpg`**: Múltiples imágenes, una por cada grupo de color
@@ -76,48 +116,88 @@ El programa genera los siguientes archivos:
 
 ## 🎓 Ejemplo de flujo de trabajo
 
-### Para tu rompecabezas de 1000 piezas
+### Para tu rompecabezas de 1000 piezas (YA TIENES EL BORDE ARMADO)
 
-1. **Ya tienes el borde armado** ✅
+**Método recomendado - Usar el modo avanzado:**
 
-2. **Agrupa las piezas restantes por zona de color**:
-   - Cielo / fondo
-   - Elementos principales
-   - Detalles específicos
+1. **Toma foto de tu borde armado**:
+   - Desde arriba, con buena luz
+   - Asegúrate que se vea todo el borde completo
+   - Guárdala como `borde_armado.jpg`
 
-3. **Para cada grupo**:
+2. **Agrupa piezas sueltas por color similar** (30-50 piezas):
+   - Por ejemplo: todas las piezas azules del cielo
+   - Colócalas separadas sobre fondo blanco/negro
+   - Toma foto: `piezas_cielo.jpg`
+
+3. **Ejecuta el programa en modo avanzado**:
    ```bash
-   # Toma una foto del grupo
-   python puzzle_solver.py grupo_cielo.jpg --output-dir resultados_cielo
-
-   # Revisa las visualizaciones generadas
-   # El programa te mostrará piezas similares
+   python puzzle_solver.py piezas_cielo.jpg \
+     --puzzle-assembled borde_armado.jpg \
+     --output-dir resultados_cielo
    ```
 
-4. **Usa las sugerencias**:
-   - El programa te dirá qué piezas tienen colores de borde similares
-   - Prueba físicamente las coincidencias sugeridas
-   - Continúa con el siguiente grupo
+4. **Revisa los resultados**:
+   - El programa te dirá: "Pieza #5 encaja en borde TOP con score 0.892"
+   - Abre `matches_best_pieces.jpg` para ver las piezas sugeridas
+   - Prueba físicamente las piezas en los lugares indicados
+
+5. **Actualiza tu foto del rompecabezas** a medida que agregas piezas:
+   - Arma las piezas que funcionaron
+   - Toma nueva foto del progreso
+   - Repite el proceso con las piezas restantes
+
+**Método alternativo - Modo simple:**
+
+Útil si aún no tienes nada armado o quieres solo explorar:
+
+```bash
+# Analiza piezas sueltas para encontrar similares entre sí
+python puzzle_solver.py piezas_variadas.jpg --output-dir resultados
+```
 
 ## 💡 Consejos
 
+### Para el modo avanzado:
+- **Buena foto del rompecabezas armado**: Asegúrate que los bordes estén bien visibles
+- **Fondo contrastante**: Coloca el rompecabezas sobre un fondo de color diferente
+- **Iluminación uniforme**: Evita sombras en los bordes
+- **Actualiza frecuentemente**: Toma nueva foto cada vez que agregas 5-10 piezas
+- **Prueba físicamente**: El score es una guía, siempre verifica manualmente
+
+### Para ambos modos:
 - **Ajusta `--min-area`**: Si detecta muchos objetos falsos, aumenta este valor
 - **Ajusta `--tolerance`**:
   - Valor más bajo (20-30): Grupos más específicos, más grupos
   - Valor más alto (60-80): Grupos más generales, menos grupos
+- **Ajusta `--top-matches`**: Muestra más o menos sugerencias según necesites
 - **Calidad de imagen**: Una mejor foto = mejores resultados
 - **Paciencia**: Este programa es una herramienta de ayuda, no reemplaza el proceso manual
 
 ## 🔧 Solución de problemas
 
-### No detecta piezas
+### No detecta el rompecabezas armado (modo avanzado)
+- Asegúrate que el rompecabezas esté completo en la foto
+- Mejora el contraste entre el rompecabezas y el fondo
+- Evita sombras fuertes sobre el rompecabezas
+- Toma la foto directamente desde arriba
+
+### Las sugerencias no son buenas (modo avanzado)
+- Usa piezas de colores similares (pre-agrupa manualmente)
+- Asegúrate que las fotos tengan la misma iluminación
+- Reduce el número de piezas sueltas por análisis (20-40 es ideal)
+- Aumenta `--top-matches` para ver más opciones
+
+### No detecta piezas sueltas
 - Verifica que haya buen contraste entre las piezas y el fondo
 - Reduce el valor de `--min-area`
 - Mejora la iluminación de la foto
+- Asegúrate que las piezas no se toquen entre sí
 
 ### Detecta demasiados objetos
 - Aumenta el valor de `--min-area`
 - Limpia el fondo de objetos no deseados
+- Usa un fondo más uniforme
 
 ### Los grupos de color no son útiles
 - Ajusta el valor de `--tolerance`
@@ -126,10 +206,20 @@ El programa genera los siguientes archivos:
 ## 📝 Información técnica
 
 El programa utiliza:
-- **Detección de contornos**: Para identificar piezas individuales
-- **K-means clustering**: Para encontrar colores dominantes
-- **Análisis de bordes**: Para comparar y sugerir coincidencias
+- **Canny Edge Detection**: Para detectar bordes del rompecabezas armado
+- **Segmentación de bordes**: Divide bordes en segmentos pequeños para análisis detallado
+- **Comparación de colores**: Algoritmo de similitud basado en distancia euclidiana en espacio RGB
+- **Detección de contornos**: Para identificar piezas individuales (cv2.findContours)
+- **K-means clustering**: Para encontrar colores dominantes de cada pieza
+- **Análisis de bordes por dirección**: Extrae colores de top/bottom/left/right de cada pieza
 - **Threshold adaptativo**: Para manejar diferentes condiciones de iluminación
+
+### Cómo funciona el matching:
+1. El rompecabezas armado se divide en segmentos de borde (~50px cada uno)
+2. Cada pieza suelta se analiza extrayendo colores de sus 4 bordes
+3. Se comparan bordes opuestos (top del puzzle con bottom de pieza, etc.)
+4. Se calcula un score de similitud basado en distancia de color
+5. Se ordenan las piezas por mejor score de coincidencia
 
 ## 🤝 Contribuciones
 
