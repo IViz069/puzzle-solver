@@ -27,6 +27,8 @@ class PuzzlePiece:
         self.bbox = bbox  # (x, y, w, h)
         self.dominant_colors = []
         self.edge_colors = {'top': [], 'bottom': [], 'left': [], 'right': []}
+        self.edge_shapes = {'top': 'unknown', 'bottom': 'unknown',
+                           'left': 'unknown', 'right': 'unknown'}
         self.area = cv2.contourArea(contour)
 
     def extract_colors(self, num_colors=3):
@@ -69,6 +71,86 @@ class PuzzlePiece:
     def _get_avg_color(self, region):
         """Calcula el color promedio de una región"""
         return cv2.mean(region)[:3]
+
+    def detect_edge_shapes(self):
+        """Detecta la forma de cada borde: flat (recto), tab (pestaña), blank (cavidad)"""
+        x, y, w, h = self.bbox
+
+        # Aproximar el contorno para suavizarlo
+        epsilon = 0.02 * cv2.arcLength(self.contour, True)
+        approx = cv2.approxPolyDP(self.contour, epsilon, True)
+
+        # Ajustar contorno a coordenadas relativas al bbox
+        contour_shifted = self.contour - [x, y]
+
+        # Analizar cada borde
+        self.edge_shapes['top'] = self._analyze_edge_shape(contour_shifted, 'top', w, h)
+        self.edge_shapes['bottom'] = self._analyze_edge_shape(contour_shifted, 'bottom', w, h)
+        self.edge_shapes['left'] = self._analyze_edge_shape(contour_shifted, 'left', w, h)
+        self.edge_shapes['right'] = self._analyze_edge_shape(contour_shifted, 'right', w, h)
+
+        return self.edge_shapes
+
+    def _analyze_edge_shape(self, contour, edge: str, width: int, height: int):
+        """Analiza un borde específico para determinar su forma"""
+        # Extraer puntos del contorno que corresponden a este borde
+        points = contour.reshape(-1, 2)
+
+        margin = 0.15  # 15% de margen en cada lado
+
+        if edge == 'top':
+            # Puntos en el borde superior (y pequeño)
+            edge_points = points[points[:, 1] < height * 0.25]
+            if len(edge_points) < 5:
+                return 'flat'
+            # Línea base es y=0
+            baseline_y = 0
+            deviation = np.mean(edge_points[:, 1]) - baseline_y
+
+        elif edge == 'bottom':
+            # Puntos en el borde inferior (y grande)
+            edge_points = points[points[:, 1] > height * 0.75]
+            if len(edge_points) < 5:
+                return 'flat'
+            baseline_y = height
+            deviation = baseline_y - np.mean(edge_points[:, 1])
+
+        elif edge == 'left':
+            # Puntos en el borde izquierdo (x pequeño)
+            edge_points = points[points[:, 0] < width * 0.25]
+            if len(edge_points) < 5:
+                return 'flat'
+            baseline_x = 0
+            deviation = np.mean(edge_points[:, 0]) - baseline_x
+
+        else:  # right
+            # Puntos en el borde derecho (x grande)
+            edge_points = points[points[:, 0] > width * 0.75]
+            if len(edge_points) < 5:
+                return 'flat'
+            baseline_x = width
+            deviation = baseline_x - np.mean(edge_points[:, 0])
+
+        # Calcular curvatura promedio
+        if len(edge_points) < 5:
+            return 'flat'
+
+        # Calcular desviación estándar para detectar irregularidades
+        if edge in ['top', 'bottom']:
+            std_dev = np.std(edge_points[:, 1])
+        else:
+            std_dev = np.std(edge_points[:, 0])
+
+        # Umbral para determinar tipo de borde
+        size = min(width, height)
+        flat_threshold = size * 0.08  # 8% del tamaño
+
+        if std_dev < flat_threshold:
+            return 'flat'  # Borde recto (lado del rompecabezas)
+        elif deviation > 0:
+            return 'tab'   # Pestaña que sobresale
+        else:
+            return 'blank' # Cavidad que entra
 
 
 class PuzzleEdge:
@@ -280,6 +362,7 @@ class PuzzleSolver:
             piece = PuzzlePiece(piece_id, contour, piece_img, (x, y, w, h))
             piece.extract_colors()
             piece.extract_edge_colors()
+            piece.detect_edge_shapes()  # Detectar forma de bordes
 
             self.pieces.append(piece)
             piece_id += 1
@@ -365,6 +448,22 @@ class PuzzleSolver:
 
         return total_similarity / comparisons if comparisons > 0 else 0
 
+    def _shapes_compatible(self, shape1: str, shape2: str) -> bool:
+        """Verifica si dos formas de borde son compatibles para encajar"""
+        # tab (pestaña) encaja con blank (cavidad)
+        if shape1 == 'tab' and shape2 == 'blank':
+            return True
+        if shape1 == 'blank' and shape2 == 'tab':
+            return True
+        # flat (recto) solo encaja con flat
+        if shape1 == 'flat' and shape2 == 'flat':
+            return True
+        # unknown puede encajar con cualquiera (fallback)
+        if shape1 == 'unknown' or shape2 == 'unknown':
+            return True
+        # Todas las demás combinaciones no encajan
+        return False
+
     def find_pieces_for_puzzle(self, assembled_puzzle: AssembledPuzzle, top_n=10):
         """Encuentra qué piezas sueltas encajan mejor con el rompecabezas armado"""
         print(f"\n🔍 Buscando piezas que encajen con el rompecabezas armado...")
@@ -393,14 +492,30 @@ class PuzzleSolver:
 
             # Comparar cada borde de la pieza con cada segmento del puzzle
             for edge_name, edge_color in piece.edge_colors.items():
+                # Obtener forma del borde de la pieza
+                piece_shape = piece.edge_shapes.get(edge_name, 'unknown')
+
                 for segment in puzzle_segments:
                     # Solo comparar bordes compatibles (opuestos)
                     if opposite[segment['direction']] == edge_name:
+                        # El borde del puzzle armado es siempre 'flat' (marco externo)
+                        puzzle_shape = 'flat'
+
+                        # Verificar compatibilidad de formas
+                        if not self._shapes_compatible(piece_shape, puzzle_shape):
+                            continue  # Formas incompatibles, saltar
+
                         # Calcular similitud de color
                         puzzle_color = segment['color']
                         distance = np.sqrt(sum((c1 - c2) ** 2
                                              for c1, c2 in zip(edge_color, puzzle_color)))
-                        similarity = 1 / (1 + distance)
+                        color_similarity = 1 / (1 + distance)
+
+                        # Bonus por compatibilidad de forma
+                        shape_bonus = 2.0 if piece_shape == 'flat' else 1.0
+
+                        # Score combinado: color * bonus de forma
+                        similarity = color_similarity * shape_bonus
 
                         if similarity > best_match_score:
                             best_match_score = similarity
@@ -408,10 +523,12 @@ class PuzzleSolver:
                             best_edge = edge_name
 
             if best_match_score > 0:
+                piece_shape = piece.edge_shapes.get(best_edge, 'unknown') if best_edge else 'unknown'
                 matches.append({
                     'piece_id': piece.id,
                     'score': best_match_score,
                     'piece_edge': best_edge,
+                    'piece_shape': piece_shape,
                     'puzzle_position': best_segment['position'] if best_segment else None,
                     'puzzle_direction': best_segment['direction'] if best_segment else None
                 })
@@ -477,16 +594,23 @@ class PuzzleSolver:
                 pieces_img[y_offset:y_offset+new_h, x_offset:x_offset+new_w][mask] = resized[mask]
 
                 # Agregar información
-                text_y = row * cell_size + cell_size - 60
+                shape_short = {'flat': 'Rect', 'tab': 'Pest', 'blank': 'Cav', 'unknown': '?'}
+                piece_shape = match.get('piece_shape', 'unknown')
+                shape_str = shape_short.get(piece_shape, '?')
+
+                text_y = row * cell_size + cell_size - 75
                 cv2.putText(pieces_img, f"Pieza {piece.id}",
                            (col * cell_size + 10, text_y),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                 cv2.putText(pieces_img, f"Score: {match['score']:.3f}",
-                           (col * cell_size + 10, text_y + 20),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 100, 0), 1)
-                cv2.putText(pieces_img, f"{match['puzzle_direction']}",
-                           (col * cell_size + 10, text_y + 40),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 0, 0), 1)
+                           (col * cell_size + 10, text_y + 18),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 100, 0), 1)
+                cv2.putText(pieces_img, f"Borde: {match['puzzle_direction']}",
+                           (col * cell_size + 10, text_y + 36),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 0, 0), 1)
+                cv2.putText(pieces_img, f"Forma: {shape_str}",
+                           (col * cell_size + 10, text_y + 54),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 200), 1)
 
         cv2.imwrite(output_path.replace('.jpg', '_best_pieces.jpg'), pieces_img)
         print(f"✅ Visualizaciones guardadas:")
@@ -606,7 +730,8 @@ class PuzzleSolver:
                 'bbox': piece.bbox,
                 'area': float(piece.area),
                 'dominant_colors': piece.dominant_colors,
-                'edge_colors': piece.edge_colors
+                'edge_colors': piece.edge_colors,
+                'edge_shapes': piece.edge_shapes
             }
             data['pieces'].append(piece_data)
 
@@ -689,10 +814,14 @@ El modo avanzado te dirá qué piezas específicas encajan mejor con tu rompecab
 
                 for i, match in enumerate(matches, 1):
                     piece = solver.pieces[match['piece_id']]
+                    shape_emoji = {'flat': '▬', 'tab': '▲', 'blank': '▼', 'unknown': '?'}
+                    shape_name = {'flat': 'Recto', 'tab': 'Pestaña', 'blank': 'Cavidad', 'unknown': 'Desconocido'}
+                    piece_shape = match.get('piece_shape', 'unknown')
+
                     print(f"\n{i}. 🧩 Pieza #{match['piece_id']}")
                     print(f"   ✨ Score: {match['score']:.3f}")
                     print(f"   📍 Encajaría en borde: {match['puzzle_direction']}")
-                    print(f"   🔄 Lado de pieza: {match['piece_edge']}")
+                    print(f"   🔄 Lado de pieza: {match['piece_edge']} {shape_emoji.get(piece_shape, '?')} ({shape_name.get(piece_shape, 'Desconocido')})")
                     colors = [int(c) for c in piece.dominant_colors[0]] if piece.dominant_colors else [0, 0, 0]
                     print(f"   🎨 Color dominante: RGB{tuple(colors)}")
 

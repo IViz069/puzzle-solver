@@ -13,6 +13,8 @@ Programa en Python que usa OpenCV para ayudarte a resolver rompecabezas. **Compa
 ## 🎯 Características
 
 - **Modo avanzado**: Compara rompecabezas armado vs piezas sueltas (¡NUEVO!)
+- **Detección de forma de bordes**: Identifica pestañas y cavidades automáticamente (¡NUEVO!)
+- **Matching por forma + color**: Solo sugiere piezas con formas compatibles (¡NUEVO!)
 - **Detección de bordes**: Analiza los bordes del rompecabezas armado
 - **Matching inteligente**: Compara colores de bordes para encontrar coincidencias
 - **Detección automática de piezas**: Identifica piezas individuales en fotografías
@@ -208,18 +210,41 @@ python puzzle_solver.py piezas_variadas.jpg --output-dir resultados
 El programa utiliza:
 - **Canny Edge Detection**: Para detectar bordes del rompecabezas armado
 - **Segmentación de bordes**: Divide bordes en segmentos pequeños para análisis detallado
+- **Análisis de curvatura**: Detecta pestañas (tabs) y cavidades (blanks) en cada borde
+- **Verificación de compatibilidad**: Solo permite emparejar formas compatibles
 - **Comparación de colores**: Algoritmo de similitud basado en distancia euclidiana en espacio RGB
 - **Detección de contornos**: Para identificar piezas individuales (cv2.findContours)
 - **K-means clustering**: Para encontrar colores dominantes de cada pieza
 - **Análisis de bordes por dirección**: Extrae colores de top/bottom/left/right de cada pieza
 - **Threshold adaptativo**: Para manejar diferentes condiciones de iluminación
 
-### Cómo funciona el matching:
+### Detección de forma de bordes:
+El programa analiza cada borde de cada pieza para clasificarlo como:
+- **Flat (▬)**: Borde recto - lados del rompecabezas
+- **Tab (▲)**: Pestaña que sobresale
+- **Blank (▼)**: Cavidad que entra
+
+Algoritmo:
+1. Extrae puntos del contorno correspondientes a cada borde
+2. Calcula desviación estándar para detectar irregularidades
+3. Determina si es recto, sobresale o entra basándose en umbrales
+
+### Cómo funciona el matching mejorado:
 1. El rompecabezas armado se divide en segmentos de borde (~50px cada uno)
-2. Cada pieza suelta se analiza extrayendo colores de sus 4 bordes
+2. Cada pieza suelta se analiza:
+   - Extrae colores de sus 4 bordes
+   - Detecta forma de cada borde (flat/tab/blank)
 3. Se comparan bordes opuestos (top del puzzle con bottom de pieza, etc.)
-4. Se calcula un score de similitud basado en distancia de color
-5. Se ordenan las piezas por mejor score de coincidencia
+4. **Verificación de forma**: Solo continúa si las formas son compatibles
+   - Tab ↔ Blank: Compatible ✅
+   - Flat ↔ Flat: Compatible ✅
+   - Tab ↔ Tab: NO compatible ❌
+   - Blank ↔ Blank: NO compatible ❌
+5. Se calcula score: similitud de color × bonus de forma
+   - Piezas con borde flat reciben bonus 2x (son bordes del puzzle)
+6. Se ordenan las piezas por mejor score de coincidencia
+
+**Resultado**: Scores más altos y sugerencias más precisas, eliminando falsos positivos por incompatibilidad de forma.
 
 ## 🤝 Contribuciones
 
